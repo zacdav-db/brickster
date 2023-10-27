@@ -2,6 +2,11 @@
 # - can only return so many objects at once, how to paginate via UI?
 #   - impacts experiments, model registry, etc.
 
+# adding new environment to hold the data.
+brixter.env <- new.env()
+
+
+
 brickster_actions <- function(host) {
   list(
     Workspace = list(
@@ -80,6 +85,7 @@ brickster_actions <- function(host) {
 }
 
 get_id_from_panel_name <- function(x) {
+  #browser()
   id <- sub(pattern = ".*\\((.*)\\)", replacement = "\\1", x = x)
 }
 
@@ -163,6 +169,7 @@ get_schemas <- function(catalog, host, token) {
 }
 
 get_tables <- function(catalog, schema, host, token) {
+  # #browser()
   tables <- db_uc_tables_list(
     catalog = catalog,
     schema = schema,
@@ -170,16 +177,20 @@ get_tables <- function(catalog, schema, host, token) {
     token = token
   )
   if (length(tables) > 0) {
+
     data.frame(
       name = purrr::map_chr(tables, "name"),
       type = "table"
     )
+
+
   } else {
     data.frame(name = NULL, type = NULL)
   }
 }
 
 get_table_data <- function(catalog, schema, table, host, token, metadata = TRUE) {
+  #browser()
   # if metadata is TRUE then return metadata, otherwise columns
   tbl <- db_uc_tables_get(
     catalog = catalog,
@@ -368,6 +379,7 @@ get_feature_tables <- function(host, token) {
 }
 
 get_feature_table <- function(table, host, token) {
+  #browser()
   tbl <- db_feature_tables_get(
     feature_table = table,
     host = host,
@@ -404,14 +416,45 @@ get_feature_table_columns <- function(table, host, token) {
 }
 
 get_clusters <- function(host, token) {
+  #browser()
   clusters <- db_cluster_list(host = host, token = token)
   purrr::map_dfr(clusters, function(x) {
+
     list(
       name = as.character(glue::glue("[{x$state}] {x$cluster_name} ({x$cluster_id})")),
       type = "cluster"
     )
   })
 }
+
+
+get_clusters_2 <- function(host, token) {
+  clusters <- db_cluster_list(host = host, token = token)
+  # populate clusters variable in brixter.env
+  brixter.env$clusters=purrr::map_dfr(clusters,function(x){
+            #browser()
+            x$type=dplyr::case_when(stringr::str_sub(x$cluster_name,1,3)=='job'~'jobCluster',
+                                                    T~"personalCluster")
+
+            list(
+              name = as.character(glue::glue("[{x$state}] {x$cluster_name} ({x$cluster_id})")),
+              type = as.character(glue::glue("{x$type}"))
+            )
+
+
+          })
+
+}
+
+filter_clusters <-function(lFilter){
+
+  objects=brixter.env$clusters[brixter.env$clusters$type==lFilter,]
+  objects$type="cluster"
+
+  return(objects)
+}
+
+
 
 get_cluster <- function(id, host, token) {
   x <- db_cluster_get(id, host, token)
@@ -483,10 +526,39 @@ list_objects <- function(host, token,
                          featuretable = NULL,
                          columns = NULL,
                          experiments = NULL,
+                         ### Skodman
+                         skodman_test=NULL,
                          ...) {
+
+  if (!is.null(skodman_test)) {
+    #browser()
+    if(is.null(brixter.env$clusters)){
+      get_clusters_2(host = host, token = token)
+    }
+
+    if(!is.null(clusters)){
+      #browser()
+      fltr=dplyr::case_when(clusters=="Job"~"jobCluster",
+                            clusters=="Personal"~"personalCluster",
+                            T~"pool")
+
+      objects=filter_clusters(fltr)
+      return(objects)
+    }
+
+
+    objects<-data.frame(
+      name = c("Personal", "Job"),
+      type = "clusters"
+    )
+
+
+    return(objects)
+  }
 
   # uc metastore
   if (!is.null(metastore)) {
+
 
     if (!is.null(table)) {
       objects <- data.frame(
@@ -514,7 +586,7 @@ list_objects <- function(host, token,
 
   # feature store
   if (!is.null(featurestore)) {
-
+    #browser()
     if (!is.null(featuretable)) {
       objects <- data.frame(
         name = c("metadata", "columns"),
@@ -616,7 +688,8 @@ list_objects <- function(host, token,
     "Clusters" = "clusters",
     "SQL Warehouses" = "warehouses",
     "File System (DBFS)" = "dbfs",
-    "Workspace (Notebooks)" = "notebooks"
+    "Workspace (Notebooks)" = "notebooks",
+    "skodman_test"="skodman_test"
   )
 
   if (!sql_active) {
@@ -635,7 +708,7 @@ list_objects <- function(host, token,
 }
 
 list_columns <- function(host, token, path = "", ...) {
-
+  #browser()
   dots <- list(...)
   leaf <- dots[length(dots)]
   leaf_type <- names(leaf)
@@ -646,7 +719,7 @@ list_columns <- function(host, token, path = "", ...) {
     return(info)
   }
 
-  if (leaf_type == "warehouse") {
+    if (leaf_type == "warehouse") {
     info <- get_warehouse(id = get_id_from_panel_name(leaf), host = host, token = token)
     return(info)
   }
@@ -829,6 +902,8 @@ preview_object <- function(host, token, rowLimit,
 
 }
 
+
+
 #' Connect to Databricks Workspace
 #'
 #' @inheritParams auth_params
@@ -841,12 +916,14 @@ preview_object <- function(host, token, rowLimit,
 #' open_workspace(host = db_host(), token = db_token, name = "MyWorkspace")
 #' }
 #' @importFrom glue glue
-open_workspace <- function(host = db_host(), token = db_token(), name = NULL) {
+open_workspace <- function(host = db_host(), token = db_token(), name = db_wsid()) {
+
+  #browser()
   observer <- getOption("connectionObserver")
   if (!is.null(observer)) {
 
     connection_string <- glue::glue(
-      "library(brickster)\nopen_workspace(host = db_host(), token = db_token())
+      "library(brickster)\nopen_workspace(host = db_host(), token = db_token(),name=db_wsid())
     ")
 
     display_name <- if (!is.null(name)) name else host
@@ -861,10 +938,11 @@ open_workspace <- function(host = db_host(), token = db_token(), name = NULL) {
         close_workspace(host)
       },
       listObjectTypes = function() {
+        #browser()
         list_objects_types()
       },
       listObjects = function(type = "root", ...) {
-
+        #browser()
         dots <- list(...)
 
         # folders can be nested indefinitely
@@ -893,7 +971,9 @@ open_workspace <- function(host = db_host(), token = db_token(), name = NULL) {
           experiments = dots$experiments,
           modelregistry = dots$modelregistry,
           model = dots[["model"]],
-          versions = dots$versions
+          versions = dots$versions,
+          skodman_test=dots$skodman_test
+
         )
         return(objects)
       },
@@ -925,9 +1005,13 @@ close_workspace <- function(host = db_host()) {
   if (!is.null(observer)) {
     observer$connectionClosed(type = "workspace", host = host)
   }
+
+  # clean up .rs.WorkingDataEnv
+  rm(list=ls(envir =brixter.env),envir=brixter.env)
 }
 
 list_objects_types <- function() {
+  #browser()
   list(
     workspace = list(contains = list(
       clusters = list(contains = list(
@@ -995,7 +1079,32 @@ list_objects_types <- function() {
             contains = "data"
           )
         ))
-      ))
+      )),
+      skodman_test = list(
+        personalClusters = list(contains = list(
+          cluster = list(
+            icon = system.file("icons", "magnify.png", package = "brickster"),
+            contains = "data"
+          )
+        ))
+        ,
+        jobClusters = list(contains = list(
+          cluster = list(
+            icon = system.file("icons", "magnify.png", package = "brickster"),
+            contains = "data"
+          )
+        ))
+      )
+
+
     ))
   )
 }
+
+
+# clusters = list(contains = list(
+#   cluster = list(
+#     icon = system.file("icons", "magnify.png", package = "brickster"),
+#     contains = "data"
+#   )
+# ))

@@ -185,7 +185,7 @@ db_uc_tables_list <- function(catalog, schema,
                               host = db_host(), token = db_token(),
                               perform_request = TRUE) {
 
-  req <- db_request(
+   req <- db_request(
     endpoint = "unity-catalog/tables",
     method = "GET",
     version = "2.1",
