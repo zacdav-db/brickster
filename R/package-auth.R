@@ -98,22 +98,6 @@ db_wsid <- function(profile = getOption("db_profile")) {
   read_env_var(key = "wsid", profile = profile)
 }
 
-#' Read .netrc File
-#'
-#' @param path path of `.netrc` file, default is `~/.netrc`.
-#'
-#' @family Databricks Authentication Helpers
-#'
-#' @return named list of `.netrc` entries
-#' @export
-db_read_netrc <- function(path = "~/.netrc") {
-  # nocov start
-  params <- readLines(path, warn = FALSE)
-  params <- lapply(strsplit(params, " "), `[`, 2)
-  setNames(params, c("machine", "login", "password"))
-  # nocov end
-}
-
 #' @name auth_params
 #' @param host Databricks workspace URL, defaults to calling [db_host()].
 #' @param token Databricks workspace token, defaults to calling [db_token()].
