@@ -153,11 +153,9 @@ clean_command_results <- function(x, options, language) {
 
   # otherwise treat the results as standard output
   # each language needs its own special treatment
-  if (language == "r") {
+  if (language %in% c("r", "python")) {
     out <- x$results$data
-  } else if (language == "python") {
-    out <- x$results$data
-    is_html <- grepl(pattern = "<html|<div", out)
+    is_html <- grepl(pattern = "<html|<div|<!DOCTYPE", out)
     if (is_html) {
       print(htmltools::HTML(out))
       out <- NULL
